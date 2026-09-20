@@ -1,0 +1,51 @@
+name: crypto-scan
+
+# 每 15 分钟自动跑一次；也可以在网页/手机 App 上手动点 "Run workflow"
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+# 允许把去重状态提交回来（避免重复推送）
+permissions:
+  contents: write
+
+# 同一时间只跑一个，防止重叠
+concurrency:
+  group: crypto-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 准备 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 运行市场扫描
+        env:
+          BARK_KEY: ${{ secrets.BARK_KEY }}
+          BINANCE_API_KEY: ${{ secrets.BINANCE_API_KEY }}
+          BINANCE_API_SECRET: ${{ secrets.BINANCE_API_SECRET }}
+          MIN_VOL: '2000000'
+        run: python crypto/cloud_scan.py
+
+      - name: 保存去重状态
+        run: |
+          mkdir -p state
+          git config user.name  "crypto-bot"
+          git config user.email "crypto-bot@users.noreply.github.com"
+          git add state/ 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "状态无变化"
+          else
+            git commit -m "state: $(date -u '+%Y-%m-%d %H:%M') UTC"
+            git push
+          fi
