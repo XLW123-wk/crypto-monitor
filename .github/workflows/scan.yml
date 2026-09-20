@@ -1,6 +1,7 @@
 name: crypto-scan
 
-# 每 15 分钟自动跑一次；也可以在网页/手机 App 上手动点 "Run workflow"
+# 主触发：cron-job.org 外部定时（每 15 分钟调 workflow_dispatch）
+# 备用：GitHub 自带 schedule（本仓库上实测不工作，留着当冗余）
 on:
   schedule:
     - cron: '*/15 * * * *'
@@ -32,20 +33,31 @@ jobs:
       - name: 运行市场扫描
         env:
           BARK_KEY: ${{ secrets.BARK_KEY }}
-          BINANCE_API_KEY: ${{ secrets.BINANCE_API_KEY }}
-          BINANCE_API_SECRET: ${{ secrets.BINANCE_API_SECRET }}
           MIN_VOL: '2000000'
         run: python crypto/cloud_scan.py
 
       - name: 保存去重状态
         run: |
+          set +e
           mkdir -p state
           git config user.name  "crypto-bot"
           git config user.email "crypto-bot@users.noreply.github.com"
-          git add state/ 2>/dev/null || true
+          git add state/ 2>/dev/null
           if git diff --cached --quiet; then
             echo "状态无变化"
-          else
-            git commit -m "state: $(date -u '+%Y-%m-%d %H:%M') UTC"
-            git push
+            exit 0
           fi
+          git commit -m "state: $(date -u '+%Y-%m-%d %H:%M') UTC"
+          # 并发运行时远端可能已更新，重试 3 次并先 rebase
+          for i in 1 2 3; do
+            git pull --rebase --autostash origin main > /dev/null 2>&1 \
+              || git rebase --abort > /dev/null 2>&1
+            if git push; then
+              echo "OK 状态已保存"
+              exit 0
+            fi
+            echo "第 $i 次推送失败，重试…"
+            sleep 4
+          done
+          echo "WARN 状态推送失败，但不影响本次扫描结果"
+          exit 0
