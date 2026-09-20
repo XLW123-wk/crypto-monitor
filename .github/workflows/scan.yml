@@ -1,9 +1,9 @@
 name: crypto-scan
 
-# 每 30 分钟自动跑一次（私有仓库免费额度限制）；也可以在网页/手机 App 上手动点 "Run workflow"
+# 每 15 分钟自动跑一次；也可以在网页/手机 App 上手动点 "Run workflow"
 on:
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 # 允许把去重状态提交回来（避免重复推送）
